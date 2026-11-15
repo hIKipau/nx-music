@@ -1,4 +1,4 @@
-export VERSION := 0.4.6
+export VERSION := 0.4.7
 export API_VERSION := 7
 export WANT_FLAC := 1
 export WANT_MP3 := 1

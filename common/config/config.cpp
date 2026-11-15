@@ -1,6 +1,7 @@
 #include "config.hpp"
 #include "sdmc/sdmc.hpp"
 #include "minIni/minIni.h"
+#include "tune.h"
 #include <cstdio>
 
 namespace config {
@@ -35,7 +36,7 @@ void set_shuffle(bool value) {
 }
 
 auto get_repeat() -> int {
-    return ini_getl("config", "repeat", 1, CONFIG_PATH);
+    return ini_getl("config", "repeat", TuneRepeatMode_All, CONFIG_PATH);
 }
 
 void set_repeat(int value) {

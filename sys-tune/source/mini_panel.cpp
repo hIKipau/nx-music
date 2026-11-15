@@ -297,6 +297,115 @@ bool pressedChord(const PadState& pad)
     return (padGetButtons(&pad) & chord) == chord && (padGetButtonsDown(&pad) & chord);
 }
 
+constexpr u64 firstSystemApplet = 0x0100000000001000ULL;
+constexpr u64 afterLastSystemApplet = 0x0100000000001020ULL;
+constexpr Result processNotFound = MAKERESULT(15, 1);
+using InputTargets = std::array<u64, afterLastSystemApplet - firstSystemApplet + 1>;
+
+bool getInputTargets(InputTargets& targets)
+{
+    const Result game = pmdmntGetApplicationProcessId(&targets[0]);
+    if (R_FAILED(game) && R_VALUE(game) != processNotFound)
+        return false;
+
+    for (u64 program = firstSystemApplet; program < afterLastSystemApplet; ++program) {
+        auto& pid = targets[program - firstSystemApplet + 1];
+        const Result rc = pmdmntGetProcessId(&pid, program);
+        if (R_FAILED(rc) && R_VALUE(rc) != processNotFound)
+            return false;
+        if (pid == targets[0])
+            pid = 0;
+    }
+    return true;
+}
+
+Result setAppletInput(u64 aruid, bool allowed)
+{
+    // libnx's EnableAppletToGetInput wrapper targets the caller's ARUID.
+    const struct { u8 enabled; u8 padding[7]; u64 aruid; } request{allowed, {}, aruid};
+    return serviceDispatchIn(hidsysGetServiceSession(), 503, request);
+}
+
+struct InputCapture {
+    InputTargets targets{}, disabled{};
+    Event home{}, sleep{};
+    bool hidSys = false, pm = false;
+    u64 lastCheck = 0;
+
+    bool systemTransition()
+    {
+        return R_VALUE(eventWait(&home, 0)) != KERNELRESULT(TimedOut) ||
+               R_VALUE(eventWait(&sleep, 0)) != KERNELRESULT(TimedOut);
+    }
+
+    bool acquire()
+    {
+        hidSys = R_SUCCEEDED(hidsysInitialize());
+        if (!hidSys) return false;
+        pm = R_SUCCEEDED(pmdmntInitialize());
+        if (!pm || R_FAILED(hidsysAcquireHomeButtonEventHandle(&home, false)) ||
+            R_FAILED(hidsysAcquireSleepButtonEventHandle(&sleep, false)) ||
+            systemTransition() || !getInputTargets(targets) ||
+            R_FAILED(setAppletInput(0, true))) return false;
+
+        bool captured = false;
+        for (size_t i = 0; i < targets.size(); ++i) {
+            if (!targets[i]) continue;
+            if (R_FAILED(setAppletInput(targets[i], false)))
+                return false;
+            disabled[i] = targets[i];
+            captured = true;
+        }
+        lastCheck = armGetSystemTick();
+        return captured && !systemTransition();
+    }
+
+    bool keep(u64 tick)
+    {
+        if (systemTransition()) return false;
+        if (armTicksToNs(tick - lastCheck) < 250'000'000) return true;
+        lastCheck = tick;
+        InputTargets current{};
+        if (!getInputTargets(current) || current != targets) return false;
+        // AM can re-enable the same process as a game resumes from HOME.
+        for (u64 pid : disabled)
+            if (pid && R_FAILED(setAppletInput(pid, false))) return false;
+        return true;
+    }
+
+    bool release()
+    {
+        if (!hidSys) return true;
+        bool restored = true;
+        for (u64 pid : disabled) {
+            if (!pid) continue;
+            Result rc = setAppletInput(pid, true);
+            for (int retry = 0; retry < 2 && R_FAILED(rc); ++retry) {
+                svcSleepThread(10'000'000);
+                rc = setAppletInput(pid, true);
+            }
+            restored &= R_SUCCEEDED(rc);
+        }
+        if (eventActive(&sleep)) eventClose(&sleep);
+        if (eventActive(&home)) eventClose(&home);
+        if (pm) pmdmntExit();
+        hidsysExit();
+        *this = {};
+        return restored;
+    }
+};
+
+void waitForCloseRelease(PadState& controller, PadState& handheld, u64 buttons)
+{
+    const u64 started = armGetSystemTick();
+    while (running && ((padGetButtons(&controller) | padGetButtons(&handheld)) & buttons) &&
+           armTicksToNs(armGetSystemTick() - started) < 250'000'000) {
+        svcSleepThread(12'000'000);
+        padUpdate(&controller);
+        padUpdate(&handheld);
+    }
+}
+
 Result activateNpad()
 {
     // Match libnx's hidInitializeNpad IPC, but return errors to the worker.
@@ -336,6 +445,11 @@ void run(void*)
     padInitialize(&handheld, HidNpadIdType_Handheld);
     padInitialize(&controller, HidNpadIdType_No1);
     Panel panel;
+    InputCapture capture;
+    const auto closePanel = [&] {
+        const bool restored = capture.release();
+        return panel.close() && restored;
+    };
     bool open = false, pendingFrame = false;
     u64 lastPoll = 0;
     u64 frameStarted = 0;
@@ -344,12 +458,17 @@ void run(void*)
         padUpdate(&handheld);
         const u64 down = padGetButtonsDown(&controller) | padGetButtonsDown(&handheld);
         const bool toggle = pressedChord(controller) || pressedChord(handheld);
+        const auto tick = armGetSystemTick();
         bool dirty = false;
-        if (open && (toggle || (down & HidNpadButton_B))) {
+        if (open && !capture.keep(tick)) {
             open = false;
-            if (!panel.close()) break;
+            if (!closePanel()) break;
+        } else if (open && (toggle || (down & HidNpadButton_B))) {
+            waitForCloseRelease(controller, handheld, toggle ? chord : HidNpadButton_B);
+            open = false;
+            if (!closePanel()) break;
         } else if (!open && toggle) {
-            open = panel.open();
+            open = panel.open() && capture.acquire();
             if (open) {
                 panel.mounted = R_SUCCEEDED(fsdevMountSdmc());
                 now.path.clear();
@@ -360,10 +479,9 @@ void run(void*)
                 dirty = true;
                 pendingFrame = false;
             } else {
-                if (!panel.close()) break;
+                if (!closePanel()) break;
             }
         } else if (open) {
-            const auto tick = armGetSystemTick();
             if (down || armTicksToNs(tick - lastPoll) >= 150'000'000) {
                 dirty = now.refresh(panel.mounted);
                 lastPoll = tick;
@@ -399,12 +517,12 @@ void run(void*)
             } else if (R_VALUE(rc) != frameBusy ||
                        armTicksToNs(armGetSystemTick() - frameStarted) >= 350'000'000) {
                 open = false;
-                if (!panel.close()) break;
+                if (!closePanel()) break;
             }
         }
         svcSleepThread(open ? 18'000'000 : 25'000'000);
     }
-    if (open) panel.close();
+    if (open) closePanel();
     hidExit();
 }
 }

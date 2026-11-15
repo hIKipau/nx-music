@@ -77,4 +77,4 @@ make -j4 dist
 
 ## Лицензия
 
-NX Music распространяется по [GPL-2.0](LICENSE). Фоновый модуль основан на форке [sys-tune](https://github.com/ppkantorski/sys-tune/tree/6fed5908a37e01995d0db0e37e272413d5a069e5). Уведомления о лицензиях сторонних компонентов сохранены в исходниках.
+NX Music распространяется по [GPL-2.0](LICENSE). Фоновый модуль основан на [sys-tune](https://github.com/HookedBehemoth/sys-tune). Уведомления о лицензиях сторонних компонентов сохранены в исходниках.

@@ -24,7 +24,8 @@ dist: all
 	rm -rf dist
 	mkdir -p $(MOD_DIR)/flags $(MUSIC_DIR)
 	cp sys-tune/sys-tune.nsp $(MOD_DIR)/exefs.nsp
-	touch $(MOD_DIR)/flags/boot2.flag.disabled
+	touch $(MOD_DIR)/flags/boot2.flag
+	printf '%s\n' 'NX Music' > "$(MOD_DIR)/[nx-music].txt"
 	cp app/nx-music.nro dist/switch/nx-music/
 	touch $(MUSIC_DIR)/.keep
 	cp LICENSE dist/NX-Music-LICENSE.txt

@@ -3,7 +3,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET := nx-music
 BUILD := build
 APP_TITLE := NX Music
-APP_AUTHOR := NX Music
+APP_AUTHOR := hIKipau
 APP_VERSION := $(VERSION)
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 PKG_CONFIG := $(PORTLIBS)/bin/aarch64-none-elf-pkg-config
@@ -22,7 +22,8 @@ export INCLUDE := -I$(LIBNX)/include -I$(PORTLIBS)/include -I$(CURDIR)/../ipc -I
 export LIBPATHS := -L$(PORTLIBS)/lib -L$(LIBNX)/lib
 export OFILES := main.o player.o cover.o tune.o
 export LD := $(CXX)
-export NROFLAGS := --icon=$(LIBNX)/default_icon.jpg --nacp=$(OUTPUT).nacp
+export APP_ICON := $(CURDIR)/icon.jpg
+export NROFLAGS := --icon=$(APP_ICON) --nacp=$(OUTPUT).nacp
 
 .PHONY: all clean
 all:
@@ -33,7 +34,7 @@ clean:
 	rm -rf $(BUILD) $(TARGET).elf $(TARGET).nacp $(TARGET).nro
 else
 all: $(OUTPUT).nro
-$(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp
+$(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp $(APP_ICON)
 $(OUTPUT).elf: $(OFILES)
 -include $(OFILES:.o=.d)
 endif

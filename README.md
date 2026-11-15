@@ -15,14 +15,13 @@
 | `switch/nx-music/nx-music.nro` | Приложение для hbmenu |
 | `switch/nx-music/music/` | Папка с треками |
 | `atmosphere/contents/42004E584D555349/exefs.nsp` | Фоновый модуль и мини-оверлей |
-| `atmosphere/contents/42004E584D555349/flags/boot2.flag.disabled` | Флаг автозапуска в тестовом комплекте |
+| `atmosphere/contents/42004E584D555349/flags/boot2.flag` | Флаг автозапуска фонового модуля |
+| `atmosphere/contents/42004E584D555349/[nx-music].txt` | Метка папки модуля |
 
 1. Скопируйте файлы в указанные папки. При обновлении замените и `nx-music.nro`, и `exefs.nsp`.
 2. Положите музыку в `switch/nx-music/music/`.
-3. Для включения модуля переименуйте `boot2.flag.disabled` в `boot2.flag` в его папке `flags/` и перезагрузите Switch в Atmosphère. Проверьте запуск игры до открытия NX Music, затем с играющим треком.
+3. Перезагрузите Switch в Atmosphère. Флаг `boot2.flag` уже включён в комплект.
 4. Откройте **NX Music** в hbmenu, выберите трек и нажмите **A**.
-
-Прежний `switch/.overlays/nx-music.ovl` относится к версии 0.3.0. При обновлении с неё удалите этот файл. В текущей версии мини-оверлей рисует сам фоновый модуль.
 
 ## Управление
 
